@@ -45,12 +45,12 @@ def H265Convert(inputMetadata, outputPath):
 	inputFile = str(inputMetadata['path']);
 	outputFile = str(outputPath);
 
-	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-c:v', 'libx265'];
+	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-map_metadata', '0', '-c:v', 'libx265', '-c:s', 'copy', '-c:t', 'copy', '-c:d', 'copy'];
 
 	if inputMetadata['hasAudio']:
 		command += ['-c:a', 'aac'];
 
-	command += [outputFile];
+	command += ['-map', '0', outputFile];
 	return subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, stdin = subprocess.PIPE, encoding = 'UTF-8');
 
 
@@ -110,13 +110,13 @@ def exitCleanup(signal, frame):
 
 		try:
 			process['handle'].wait(timeout = 1);
-		except Exception as error:
+		except Exception as e:
 			error("Killing ffmpeg because it is taking too long to terminate");
 			process['handle'].kill();
 		finally:
 			process['newPath'].unlink();
 
-	sys.exit(0);
+	sys.exit(130);
 
 signal.signal(signal.SIGINT, exitCleanup);
 
@@ -151,7 +151,7 @@ while len(validFiles) > 0 or len(processes) > 0:
 	while len(processes) < maxProcesses and len(validFiles) > 0:
 		metadata = validFiles.pop();
 		filePath = metadata['path'];
-		newPath = Path(str(filePath.parent / filePath.stem) + "h265.mp4");
+		newPath = Path(str(filePath.parent / filePath.stem) + "h265.mkv");
 
 		process = {};
 		process['originalFile'] = metadata;
