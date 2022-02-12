@@ -17,10 +17,6 @@ print(args);
 def error(message):
 	print(message, file=sys.stderr);
 
-if len(sys.argv) < 2:
-	error("Usage: h265ify path");
-	sys.exit(1);
-
 searchDir = args.path.expanduser().resolve();
 
 if searchDir.exists() != True:
@@ -143,7 +139,7 @@ while len(validFiles) > 0 or len(processes) > 0:
 				error(process['originalFile']['path'].name + ": Killing ffmpeg process because the timeout limit was reached.");
 				process['handle'].kill();
 				process['newPath'].unlink();
-			else
+			else:
 				continue;
 
 		elif code == 0:
