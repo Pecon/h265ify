@@ -2,6 +2,17 @@
 import sys, time, re, signal;
 import subprocess;
 from pathlib import Path;
+import argparse;
+
+argParser = argparse.ArgumentParser(description = 'Batch convert video files into h265. Depending on your video content, this could save tremendous amounts of disk space.');
+argParser.add_argument('-p', '--processes', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
+argParser.add_argument('-t', '--timeout', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg sometimes can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
+argParser.add_argument('-x', '--delete', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
+argParser.add_argument('-d', '--dry', help = "Discard encoded files as they finish. Use this for testing results.", action = 'store_true');
+argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory to start discovery of files from.");
+
+args = argParser.parse_args();
+print(args);
 
 def error(message):
 	print(message, file=sys.stderr);
@@ -10,7 +21,7 @@ if len(sys.argv) < 2:
 	error("Usage: h265ify path");
 	sys.exit(1);
 
-searchDir = Path(sys.argv[1]).expanduser().resolve();
+searchDir = args.path.expanduser().resolve();
 
 if searchDir.exists() != True:
 	error(str(searchDir) + " path does not exist.");
@@ -31,10 +42,10 @@ def checkH265(file):
 		return None;
 
 	if probeEncoderSearchExpression.search(info.stderr) != None:
-		return None;
+		return None; # Video is already hvec, don't encode
 
 	if probeHasVideoSearchExpression.search(info.stderr) == None:
-		return None;
+		return None; # Media has no video track, don't encode because that would be pointless
 
 	metadata = {'path': file};
 	metadata['hasAudio'] = probeHasAudioSearchExpression.search(info.stderr) != None;
@@ -51,6 +62,7 @@ def H265Convert(inputMetadata, outputPath):
 		command += ['-c:a', 'aac'];
 
 	command += ['-map', '0', outputFile];
+
 	return subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, stdin = subprocess.PIPE, encoding = 'UTF-8');
 
 
@@ -100,7 +112,7 @@ validFilesCount = len(validFiles);
 print(str(validFilesCount) + " files are ready to convert. (" + str(skippedFilesCount) + " skipped)");
 
 
-maxProcesses = 2;
+maxProcesses = args.processes;
 processes = [];
 
 # Clean up child processes and unfinished files if we get ctrl+c'd
@@ -127,18 +139,28 @@ while len(validFiles) > 0 or len(processes) > 0:
 		code = process['handle'].poll();
 
 		if code == None:
-			continue;
+			if args.timeout != -1 and process['startTime'] < time.time() - (args.timeout * 60):
+				error(process['originalFile']['path'].name + ": Killing ffmpeg process because the timeout limit was reached.");
+				process['handle'].kill();
+				process['newPath'].unlink();
+			else
+				continue;
 
-		if code == 0:
+		elif code == 0:
 			# We're good! Time to remove this process and its file
-			process['originalFile']['path'].unlink();
-			# print(process['originalFile']['path'].name + " finished processing.");
+			if args.delete:
+				process['originalFile']['path'].unlink();
+
+			if args.dry:
+				process['newPath'].unlink();
 
 		else:
-			# ffmpeg raised an error... We'll remove the new file instead while leaving the original alone
+			# ffmpeg raised an error... We'll remove the new file since it wasn't finished
 			failedFilesCount += 1;
+
 			process['newPath'].unlink();
-			print(process['originalFile']['path'].name + " conversion failed, displaying ffmpeg output...");
+
+			print(process['originalFile']['path'].name + " conversion failed, displaying ffmpeg output... Code: ", code);
 			print(process['handle'].stdout.read());
 			print(process['handle'].stderr.read());
 
@@ -157,6 +179,7 @@ while len(validFiles) > 0 or len(processes) > 0:
 		process['originalFile'] = metadata;
 		process['newPath'] = newPath;
 		process['handle'] = H265Convert(metadata, newPath);
+		process['startTime'] = time.time();
 		processes.append(process);
 
 		print("Processing " + str(filePath.name));
