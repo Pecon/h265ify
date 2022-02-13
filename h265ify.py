@@ -4,6 +4,9 @@ import subprocess;
 from pathlib import Path;
 import argparse;
 
+def error(message):
+	print(message, file=sys.stderr);
+
 argParser = argparse.ArgumentParser(description = 'Batch convert video files into h265. Depending on your video content, this could save tremendous amounts of disk space.');
 argParser.add_argument('-p', '--processes', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
 argParser.add_argument('-t', '--timeout', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg sometimes can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
@@ -14,8 +17,14 @@ argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory 
 args = argParser.parse_args();
 print(args);
 
-def error(message):
-	print(message, file=sys.stderr);
+if args.delete and args.dry:
+	error("Refusing to run with both dry and delete options enabled, since this would simply delete all your media files. Choose one or the other.");
+	sys.exit(1);
+
+if args.delete:
+	print("Running in DELETE MODE. Each source file that is successfully re-encoded will be deleted automatically.");
+elif args.dry:
+	print("Running in DRY-RUN MODE. Each newly encoded file will be deleted upon creation.");
 
 searchDir = args.path.expanduser().resolve();
 
@@ -34,13 +43,15 @@ def checkH265(file):
 	info = subprocess.run(['ffprobe', '-hide_banner', '-i', str(file)], capture_output = True, encoding = 'UTF-8');
 
 	if info.returncode != 0:
-		error("ffprobe returned non-zero exit code for " + str(file));
+		error(str(file) + ": ffprobe returned non-zero exit code. Skipping.");
 		return None;
 
 	if probeEncoderSearchExpression.search(info.stderr) != None:
+		error(str(file) + ": Media is already h265. Skipping.");
 		return None; # Video is already hvec, don't encode
 
 	if probeHasVideoSearchExpression.search(info.stderr) == None:
+		error(str(file) + ": Media has no video track. Skipping.");
 		return None; # Media has no video track, don't encode because that would be pointless
 
 	metadata = {'path': file};
@@ -77,14 +88,14 @@ for file in Path(searchDir).rglob("*"):
 		foundFiles.append(file);
 		foundFilesCount += 1
 
-		print(str(foundFilesCount), end='\r');
+		print("Discovering: " + str(foundFilesCount) + " files found...", end='\r');
 
 if len(foundFiles) <= 0:
 	print("No media files found to convert.");
 	sys.exit(0);
 
 foundFilesCount = len(foundFiles);
-print("Discovered " + str(foundFilesCount) + " media files.");
+print("Discovered " + str(foundFilesCount) + " media files.           ");
 
 # Check all the files with ffprobe
 i = 0;
@@ -94,7 +105,6 @@ for file in foundFiles:
 	if metadata != None:
 		validFiles.append(metadata);
 	else:
-		print("\rSkipping due to already h265: " + file.name);
 		skippedFilesCount += 1;
 
 	i += 1;
