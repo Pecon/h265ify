@@ -4,14 +4,17 @@ import subprocess;
 from pathlib import Path;
 import argparse;
 
+defaultTempFileSuffix = 'h265';
+
 def error(message):
 	print(message, file=sys.stderr);
 
 argParser = argparse.ArgumentParser(description = 'Batch convert video files into h265. Depending on your video content, this could save tremendous amounts of disk space.');
-argParser.add_argument('-p', '--processes', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
-argParser.add_argument('-t', '--timeout', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg sometimes can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
-argParser.add_argument('-x', '--delete', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
-argParser.add_argument('-d', '--dry', help = "Discard encoded files as they finish. Use this for testing results.", action = 'store_true');
+argParser.add_argument('--suffix', '-s', type = str, help = "Suffix to apply to the names of newly encoded files. Will be placed right before the file extension.", default = defaultTempFileSuffix);
+argParser.add_argument('--processes', '-p', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
+argParser.add_argument('--timeout', '-t', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg rarely can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
+argParser.add_argument('--delete', '-x', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
+argParser.add_argument('--dry', '-d', help = "Discard encoded files as they finish. Use this for testing results.", action = 'store_true');
 argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory to start discovery of files from.");
 
 args = argParser.parse_args();
@@ -19,6 +22,10 @@ print(args);
 
 if args.delete and args.dry:
 	error("Refusing to run with both dry and delete options enabled, since this would simply delete all your media files. Choose one or the other.");
+	sys.exit(1);
+
+if args.suffix == "" and not args.delete:
+	error("Using a blank suffix can result in your source files being overwritten due to name conflicts, so --delete is required for this.");
 	sys.exit(1);
 
 if args.delete:
@@ -70,7 +77,7 @@ def H265Convert(inputMetadata, outputPath):
 
 	command += ['-map', '0', outputFile];
 
-	return subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.PIPE, stdin = subprocess.PIPE, encoding = 'UTF-8');
+	return subprocess.Popen(command, stdout = subprocess.PIPE, stderr = subprocess.STDOUT, stdin = subprocess.PIPE, encoding = 'UTF-8');
 
 
 foundFiles = [];
@@ -132,7 +139,7 @@ def exitCleanup(signal, frame):
 			error("Killing ffmpeg because it is taking too long to terminate");
 			process['handle'].kill();
 		finally:
-			process['newPath'].unlink();
+			process['tempPath'].unlink();
 
 	sys.exit(130);
 
@@ -148,8 +155,9 @@ while len(validFiles) > 0 or len(processes) > 0:
 			if args.timeout != -1 and process['startTime'] < time.time() - (args.timeout * 60):
 				error(process['originalFile']['path'].name + ": Killing ffmpeg process because the timeout limit was reached.");
 				process['handle'].kill();
-				process['newPath'].unlink();
+				process['tempPath'].unlink();
 			else:
+				process['output'] += process['handle'].stdout.read(4096);
 				continue;
 
 		elif code == 0:
@@ -158,17 +166,21 @@ while len(validFiles) > 0 or len(processes) > 0:
 				process['originalFile']['path'].unlink();
 
 			if args.dry:
-				process['newPath'].unlink();
+				# Dry run, remove the newly encoded file
+				process['tempPath'].unlink();
+			elif args.suffix != defaultTempFileSuffix:
+				# Move the temporary file name to the name the user requested via --suffix
+				process['tempPath'].rename(process['destinationPath']);
 
 		else:
 			# ffmpeg raised an error... We'll remove the new file since it wasn't finished
 			failedFilesCount += 1;
 
-			process['newPath'].unlink();
-
+			process['tempPath'].unlink();
+			
 			print(process['originalFile']['path'].name + " conversion failed, displaying ffmpeg output... Code: ", code);
-			print(process['handle'].stdout.read());
-			print(process['handle'].stderr.read());
+			process['output'] += process['handle'].stdout.read();
+			print(process['output']);
 
 		
 		processes.remove(process);
@@ -179,13 +191,19 @@ while len(validFiles) > 0 or len(processes) > 0:
 	while len(processes) < maxProcesses and len(validFiles) > 0:
 		metadata = validFiles.pop();
 		filePath = metadata['path'];
-		newPath = Path(str(filePath.parent / filePath.stem) + "h265.mkv");
+		tempPath = Path(str(filePath.parent / filePath.stem) + defaultTempFileSuffix + ".mkv");
+		destinationPath = Path(str(filePath.parent / filePath.stem) + args.suffix + ".mkv");
+
+		if tempPath.exists():
+			tempPath.unlink();
 
 		process = {};
 		process['originalFile'] = metadata;
-		process['newPath'] = newPath;
-		process['handle'] = H265Convert(metadata, newPath);
+		process['tempPath'] = tempPath;
+		process['destinationPath'] = destinationPath;
+		process['handle'] = H265Convert(metadata, tempPath);
 		process['startTime'] = time.time();
+		process['output'] = "";
 		processes.append(process);
 
 		print("Processing " + str(filePath.name));
