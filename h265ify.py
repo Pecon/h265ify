@@ -134,7 +134,7 @@ def exitCleanup(signal, frame):
 		process['handle'].terminate();
 
 		try:
-			process['handle'].wait(timeout = 1);
+			process['handle'].wait(timeout = 2);
 		except Exception as e:
 			error("Killing ffmpeg because it is taking too long to terminate");
 			process['handle'].kill();
@@ -144,6 +144,8 @@ def exitCleanup(signal, frame):
 	sys.exit(130);
 
 signal.signal(signal.SIGINT, exitCleanup);
+signal.signal(signal.SIGHUP, exitCleanup);
+signal.signal(signal.SIGTERM, exitCleanup);
 
 while len(validFiles) > 0 or len(processes) > 0:
 
@@ -178,9 +180,9 @@ while len(validFiles) > 0 or len(processes) > 0:
 
 			process['tempPath'].unlink();
 			
-			print(process['originalFile']['path'].name + " conversion failed, displaying ffmpeg output... Code: ", code);
+			error(process['originalFile']['path'].name + " conversion failed, displaying ffmpeg output...");
 			process['output'] += process['handle'].stdout.read();
-			print(process['output']);
+			error(process['output']);
 
 		
 		processes.remove(process);
