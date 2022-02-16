@@ -28,6 +28,10 @@ if args.suffix == "" and not args.delete:
 	error("Using a blank suffix can result in your source files being overwritten due to name conflicts, so --delete is required for this.");
 	sys.exit(1);
 
+if args.processes < 1:
+	error("--processes cannot be an integer less than 1.");
+	sys.exit(1);
+
 if args.delete:
 	print("Running in DELETE MODE. Each source file that is successfully re-encoded will be deleted automatically.");
 elif args.dry:
@@ -70,7 +74,7 @@ def H265Convert(inputMetadata, outputPath):
 	inputFile = str(inputMetadata['path']);
 	outputFile = str(outputPath);
 
-	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-map_metadata', '0', '-c:v', 'libx265', '-c:s', 'copy', '-c:t', 'copy', '-c:d', 'copy'];
+	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-map_metadata', '0', '-c:v', 'libx265', '-preset', 'veryslow', '-c:s', 'copy', '-c:t', 'copy', '-c:d', 'copy'];
 
 	if inputMetadata['hasAudio']:
 		command += ['-c:a', 'aac'];
