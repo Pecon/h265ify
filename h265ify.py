@@ -4,16 +4,15 @@ import subprocess;
 from pathlib import Path;
 import argparse;
 
-defaultTempFileSuffix = 'h265';
-
 def error(message):
 	print(message, file=sys.stderr);
 
 argParser = argparse.ArgumentParser(description = 'Batch convert video files into h265. Depending on your video content, this could save tremendous amounts of disk space.');
-argParser.add_argument('--suffix', '-s', type = str, help = "Suffix to apply to the names of newly encoded files. Will be placed right before the file extension.", default = defaultTempFileSuffix);
+argParser.add_argument('--suffix', '-s', type = str, help = "Suffix to apply to the names of newly encoded files. Will be placed right before the file extension.", default = 'h265');
 argParser.add_argument('--processes', '-p', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
 argParser.add_argument('--timeout', '-t', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg rarely can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
 argParser.add_argument('--delete', '-x', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
+argParser.add_argument('--overwrite', '-o', help = "Overwrite existing files when there is a name conflict.", action = 'store_true');
 argParser.add_argument('--dry', '-d', help = "Discard encoded files as they finish. Use this for testing results.", action = 'store_true');
 argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory to start discovery of files from.");
 
@@ -24,8 +23,8 @@ if args.delete and args.dry:
 	error("Refusing to run with both dry and delete options enabled, since this would simply delete all your media files. Choose one or the other.");
 	sys.exit(1);
 
-if args.suffix == "" and not args.delete:
-	error("Using a blank suffix can result in your source files being overwritten due to name conflicts, so --delete is required for this.");
+if args.suffix == "" and (not args.delete and not args.overwrite):
+	error("Using a blank suffix can result in your source files being overwritten due to name conflicts, so --overwrite or --delete is required for this.");
 	sys.exit(1);
 
 if args.processes < 1:
@@ -95,7 +94,7 @@ finishedFilesCount = 0;
 # Recursively find files that match common video extensions
 videoFileExtensions = ('.mp4', '.mkv', '.avi', '.mov', '.wmv', '.webm', '.ogv');
 for file in Path(searchDir).rglob("*"):
-	if file.suffix in videoFileExtensions:
+	if file.suffix.lower() in videoFileExtensions:
 		foundFiles.append(file);
 		foundFilesCount += 1
 
@@ -174,9 +173,9 @@ while len(validFiles) > 0 or len(processes) > 0:
 			if args.dry:
 				# Dry run, remove the newly encoded file
 				process['tempPath'].unlink();
-			elif args.suffix != defaultTempFileSuffix:
-				# Move the temporary file name to the name the user requested via --suffix
-				process['tempPath'].rename(process['destinationPath']);
+
+			# Move the temporary file name to its destination
+			process['tempPath'].rename(process['destinationPath']);
 
 		else:
 			# ffmpeg raised an error... We'll remove the new file since it wasn't finished
@@ -197,8 +196,12 @@ while len(validFiles) > 0 or len(processes) > 0:
 	while len(processes) < maxProcesses and len(validFiles) > 0:
 		metadata = validFiles.pop();
 		filePath = metadata['path'];
-		tempPath = Path(str(filePath.parent / filePath.stem) + defaultTempFileSuffix + ".mkv");
+		tempPath = Path(str(filePath.parent / filePath.stem) + args.suffix + ".temp.mkv");
 		destinationPath = Path(str(filePath.parent / filePath.stem) + args.suffix + ".mkv");
+
+		if destinationPath.exists() and (not args.overwrite and not args.delete):
+			error(str(destinationPath) + ": File exists, skipping encoding. Resolve this with --overwrite or --delete (or try a different --suffix)");
+			continue;
 
 		if tempPath.exists():
 			tempPath.unlink();
