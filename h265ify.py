@@ -184,16 +184,20 @@ processes = [];
 
 # Clean up child processes and unfinished files if we get ctrl+c'd
 def exitCleanup(signal, frame):
+	error("Got request to terminate, cleaning up...");
+
 	for process in processes:
 		process['handle'].terminate();
 
-		try:
-			process['handle'].wait(timeout = 2);
-		except Exception as e:
-			error("Killing ffmpeg because it is taking too long to terminate");
-			process['handle'].kill();
-		finally:
-			process['tempPath'].unlink();
+	for process in processes:
+		if process['handle'].poll == None:
+			try:
+				process['handle'].wait(timeout = 6);
+			except Exception as e:
+				error("Killing ffmpeg because it is taking too long to terminate");
+				process['handle'].kill();
+
+		process['tempPath'].unlink();
 
 	sys.exit(130);
 
