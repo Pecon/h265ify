@@ -1,15 +1,29 @@
 #!/bin/python3
 import sys, time, re, signal;
-import subprocess;
+import subprocess, argparse, shutil;
+from shutil import which as Which;
 from pathlib import Path;
-import argparse;
+
+cpuEncoderOption = ['libx265', '-preset', 'veryslow']; #CPU encoder
+nvencEncoderOption = ['hevc_nvenc']; #NVIDIA gpu encoder
+amfEncoderOption = ['hevc_amf']; #AMD gpu encoder
 
 def error(message):
 	print(message, file=sys.stderr);
 
+# Ensure we have ffmpeg
+if Which('ffmpeg') == None:
+	error("No suitable ffmpeg executable was found on your system.");
+	sys.exit(1);
+
+
+# Initialize command line argument parsing
 argParser = argparse.ArgumentParser(description = 'Batch convert video files into h265. Depending on your video content, this could save tremendous amounts of disk space.');
 argParser.add_argument('--suffix', '-s', type = str, help = "Suffix to apply to the names of newly encoded files. Will be placed right before the file extension.", default = 'h265');
 argParser.add_argument('--processes', '-p', type = int, help = "Number of ffmpeg processes to spawn while running.", default = 2);
+argParser.add_argument('--gpu_processes', '-g', type = int, help = "Number of ffmpeg processes that will use the GPU. This will be automatically set to 1 if a compatible GPU is detected. Set to a negative number to completely disable GPU encoding.", default = 0);
+argParser.add_argument('--force_nvidia', help = "Force enable nvenc support. Use this option if your GPU is not detected but you know it supports nvenc.", action = 'store_true');
+argParser.add_argument('--force_amd', help = "Force enable amf support. This is experimental, you can try it if your GPU supports amf hardware encoding.", action = 'store_true');
 argParser.add_argument('--timeout', '-t', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg rarely can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
 argParser.add_argument('--delete', '-x', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
 argParser.add_argument('--overwrite', '-o', help = "Overwrite existing files when there is a name conflict.", action = 'store_true');
@@ -19,6 +33,7 @@ argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory 
 args = argParser.parse_args();
 print(args);
 
+# Check for bad args
 if args.delete and args.dry:
 	error("Refusing to run with both dry and delete options enabled, since this would simply delete all your media files. Choose one or the other.");
 	sys.exit(1);
@@ -31,11 +46,8 @@ if args.processes < 1:
 	error("--processes cannot be an integer less than 1.");
 	sys.exit(1);
 
-if args.delete:
-	print("Running in DELETE MODE. Each source file that is successfully re-encoded will be deleted automatically.");
-elif args.dry:
-	print("Running in DRY-RUN MODE. Each newly encoded file will be deleted upon creation.");
 
+# Validate user-supplied path
 searchDir = args.path.expanduser().resolve();
 
 if searchDir.exists() != True:
@@ -45,6 +57,32 @@ if searchDir.exists() != True:
 if searchDir.is_dir() != True:
 	error(str(searchDir) + " is not a directory.");
 	sys.exit(1);
+
+# Warn the user about delete or dry mode
+if args.delete:
+	print("Running in DELETE MODE. Each source file that is successfully re-encoded will be deleted automatically.");
+elif args.dry:
+	print("Running in DRY-RUN MODE. Each newly encoded file will be deleted upon creation.");
+
+gpuProcesses = args.gpu_processes;
+nvidiaGpuSupport = args.force_nvidia;
+amdGpuSupport = args.force_amd;
+
+# Check for nvidia gpu nvenc support
+if Which('nvidia-smi') != None:
+	supportInfo = subprocess.run(['nvidia-smi', '-L'], capture_output = True, encoding = 'UTF-8');
+	if re.search('GeForce (?:(?:GTX|RTX) \d{3,4}(?:\D[^Xx]| X)|.*?Titan \w)', supportInfo.stdout) != None: # Good enough. If you have a quadro you're on your own!
+		print("Supported nvenc-accelerated GPU detected.");
+		nvidiaGpuSupport = True;
+
+		if args.gpu_processes == 0:
+			print("Automatically enabling one GPU process.");
+			gpuProcesses += 1;
+
+# Warn about no supported gpus being enabled
+if gpuProcesses > 0 and not nvidiaGpuSupport and not amdGpuSupport:
+	error("You specified that there should be GPU processes, no supported GPUs were automatically detected. Use --force_nvidia or --force_amd to specify which GPU encoder to try.");
+
 
 probeEncoderSearchExpression = re.compile('\shevc\s');
 probeHasVideoSearchExpression = re.compile('\sVideo:\s');
@@ -73,7 +111,20 @@ def H265Convert(inputMetadata, outputPath):
 	inputFile = str(inputMetadata['path']);
 	outputFile = str(outputPath);
 
-	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-map_metadata', '0', '-c:v', 'libx265', '-preset', 'veryslow', '-c:s', 'copy', '-c:t', 'copy', '-c:d', 'copy'];
+	command = ['ffmpeg', '-nostdin', '-hide_banner', '-i', inputFile, '-map_metadata', '0', '-c:v'];
+
+	# Decide what encoder to use
+	if inputMetadata['useGPU'] and nvidiaGpuSupport:
+		command += nvencEncoderOption;
+		print(" (Using nvenc GPU encoding)", end='');
+	elif inputMetadata['useGPU'] and amdGpuSupport:
+		command += amfEncoderOption;
+		print(" (Using amf GPU encoding)", end='');
+	else:
+		command += cpuEncoderOption;
+	
+
+	command += ['-c:s', 'copy', '-c:t', 'copy', '-c:d', 'copy'];
 
 	if inputMetadata['hasAudio']:
 		command += ['-c:a', 'aac'];
@@ -187,7 +238,9 @@ while len(validFiles) > 0 or len(processes) > 0:
 			process['output'] += process['handle'].stdout.read();
 			error(process['output']);
 
-		
+		if process['originalFile']['useGPU']:
+			gpuProcesses += 1;
+
 		processes.remove(process);
 		del process;
 		finishedFilesCount += 1;
@@ -203,8 +256,16 @@ while len(validFiles) > 0 or len(processes) > 0:
 			error(str(destinationPath) + ": File exists, skipping encoding. Resolve this with --overwrite or --delete (or try a different --suffix)");
 			continue;
 
+		metadata['useGPU'] = False;
+
+		if gpuProcesses > 0:
+			gpuProcesses -= 1;
+			metadata['useGPU'] = True;
+
 		if tempPath.exists():
 			tempPath.unlink();
+
+		print("Processing " + str(filePath.name), end='');
 
 		process = {};
 		process['originalFile'] = metadata;
@@ -215,7 +276,7 @@ while len(validFiles) > 0 or len(processes) > 0:
 		process['output'] = "";
 		processes.append(process);
 
-		print("Processing " + str(filePath.name));
+		print("");
 
 
 	print("Converting: " + str(finishedFilesCount) + "/" + str(validFilesCount) + " " + str(int(finishedFilesCount / validFilesCount * 100)) + "%", end='\r');
