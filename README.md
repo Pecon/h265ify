@@ -13,18 +13,26 @@ h265ify supports the following options:
 --help (-h)
 + Displays info about these options, similar to what is documented here.
 
-
 --suffix (-s) *string*
 + A string to specify what is added to the end of the file name for newly encoded files. If a blank string is given, -x is also required since your source files could be overwritten anyways by way of name conflict. Default is 'h265'.  Example: By default cat.mp4 will re-encode to cath265.mkv
 
+--timeout (-t) *integer*
++ An integer to specify the maximum number of minutes ffmpeg is allowed to spend on a single file. If it takes longer than this, ffmpeg is killed and the file is skipped. Having this set to an amount that makes sense for the content you're encoding is recommended since ffmpeg can get stuck on rare occasions. Set to -1 for no limit. Default: 120
 
 --processes (-p) *integer*
 + An integer to specify how many ffmpeg processes to spawn at once. libx265 has fairly good multithreading by default, so the default of this option is merely 2. Set to 1 to get more breathing room on your CPU while this is running.
 
+--gpu_processes (-g) *integer*
++ An integer to specify how many ffmpeg processes will use hardware-based encoding instead of libx265 CPU encoding. This value is automatically set to 1 if a compatible hardware encoder is detected. Although hardware encoding is incredibly fast, it can produce inferior results compared to CPU encoding. Set this to -1 to completely disable hardware encoding.
 
---timeout (-t) *integer*
-+ An integer to specify the maximum number of minutes ffmpeg is allowed to spend on a single file. If it takes longer than this, ffmpeg is killed and the file is skipped. Having this set to an amount that makes sense for the content you're encoding is recommended since ffmpeg can get stuck on rare occasions. This can be set to -1 for no limit. Default: 120
+--force-nvidia
++ Add this option to force attempting to use nvenc hardware encoding. Use this option if you know your GPU supports nvenc encoding and this script hasn't automatically detected support for it.
 
+--force-amd
++ Same as above but for AMF hardware encoding. 
+
+--overwrite (-o)
++ Add this option to specify that when any file finishes encoding, it should overwrite any existing file it would have a name conflict with. If this option is not specified, name conflicts will result in the conflicting files failing to convert. Default: False
 
 --delete (-x)
 + Add this option switch to specify that you would like source files to be deleted as soon as they are encoded *successfully*. This will not delete source files that fail to encode or are skipped. Default: False
