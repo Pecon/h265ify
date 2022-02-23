@@ -1,6 +1,6 @@
 #!/bin/python3
-import sys, time, re, signal;
-import subprocess, argparse, shutil;
+import os, sys, time, re, signal;
+import subprocess, argparse;
 from shutil import which as Which;
 from pathlib import Path;
 
@@ -28,6 +28,7 @@ argParser.add_argument('--timeout', '-t', type = int, help = "Maximum minutes to
 argParser.add_argument('--delete', '-x', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
 argParser.add_argument('--overwrite', '-o', help = "Overwrite existing files when there is a name conflict.", action = 'store_true');
 argParser.add_argument('--dry', '-d', help = "Discard encoded files as they finish. Use this for testing results.", action = 'store_true');
+argParser.add_argument('--destination', metavar = 'PATH', type = Path, help = "Directory to write output files to. File conflicts will be overwritten without prompting.", default = None);
 argParser.add_argument('path', metavar = 'PATH', type = Path, help = "Directory to start discovery of files from.");
 
 args = argParser.parse_args();
@@ -47,7 +48,7 @@ if args.processes < 1:
 	sys.exit(1);
 
 
-# Validate user-supplied path
+# Validate primary search path
 searchDir = args.path.expanduser().resolve();
 
 if searchDir.exists() != True:
@@ -57,6 +58,18 @@ if searchDir.exists() != True:
 if searchDir.is_dir() != True:
 	error(str(searchDir) + " is not a directory.");
 	sys.exit(1);
+
+# Validate destination path, if supplied
+destinationDir = searchDir;
+if args.destination != None:
+	destinationDir = args.destination.expanduser().resolve();
+
+	if destinationDir.exists() != True:
+		error(str(destinationDir) + "specified destination path (-d) does not exist.");
+		sys.exit(1);
+	elif destinationDir.is_dir() != True:
+		error(str(destinationDir) + " specified destination path (-d) is not a directory.");
+		sys.exit(1);
 
 # Warn the user about delete or dry mode
 if args.delete:
@@ -253,8 +266,15 @@ while len(validFiles) > 0 or len(processes) > 0:
 	while len(processes) < maxProcesses and len(validFiles) > 0:
 		metadata = validFiles.pop();
 		filePath = metadata['path'];
-		tempPath = Path(str(filePath.parent / filePath.stem) + args.suffix + ".temp.mkv");
-		destinationPath = Path(str(filePath.parent / filePath.stem) + args.suffix + ".mkv");
+
+		# Determine path to this file without the searchDir, lets us copy the directory structure into destinationDir if it was different
+		outputDir = destinationDir / filePath.parent.relative_to(searchDir);
+		outputDir.mkdir(parents = True, exist_ok=True); # Ensure this path exists in our destination directory
+
+		# Path for the temporary file ffmpeg will write to
+		tempPath = Path(str(outputDir / filePath.stem) + args.suffix + ".temp.mkv");
+		# Path for finished file to be moved to after successful encoding
+		destinationPath = Path(str(outputDir / filePath.stem) + args.suffix + ".mkv");
 
 		if destinationPath.exists() and (not args.overwrite and not args.delete):
 			error(str(destinationPath) + ": File exists, skipping encoding. Resolve this with --overwrite or --delete (or try a different --suffix)");
