@@ -5,7 +5,7 @@ from shutil import which as Which;
 from pathlib import Path;
 
 cpuEncoderOption = ['libx265', '-preset', 'veryslow']; #CPU encoder
-nvencEncoderOption = ['hevc_nvenc']; #NVIDIA gpu encoder
+nvencEncoderOption = ['hevc_nvenc', '-preset', 'slow']; #NVIDIA gpu encoder
 amfEncoderOption = ['hevc_amf']; #AMD gpu encoder
 
 def error(message):
