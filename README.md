@@ -13,6 +13,9 @@ h265ify supports the following options:
 --help (-h)
 + Displays info about these options, similar to what is documented here.
 
+--destination *path*
++ A path to an alternate directory where encoded files will be written to. Folder structure will be maintained relative to the input directory, allowing you to essentially make a copy of the input directory which only contains the encoded media files.
+
 --suffix (-s) *string*
 + A string to specify what is added to the end of the file name for newly encoded files. If a blank string is given, -x is also required since your source files could be overwritten anyways by way of name conflict. Default is 'h265'.  Example: By default cat.mp4 will re-encode to cath265.mkv
 
