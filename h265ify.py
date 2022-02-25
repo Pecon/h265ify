@@ -65,10 +65,10 @@ if args.destination != None:
 	destinationDir = args.destination.expanduser().resolve();
 
 	if destinationDir.exists() != True:
-		error(str(destinationDir) + "specified destination path (-d) does not exist.");
+		error(str(destinationDir) + "specified destination path (--destination) does not exist.");
 		sys.exit(1);
 	elif destinationDir.is_dir() != True:
-		error(str(destinationDir) + " specified destination path (-d) is not a directory.");
+		error(str(destinationDir) + " specified destination path (--destination) is not a directory.");
 		sys.exit(1);
 
 # Warn the user about delete or dry mode
