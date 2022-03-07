@@ -115,7 +115,7 @@ def checkH265(file):
 		error(str(file) + ": Media has no video track. Skipping.");
 		return None; # Media has no video track, don't encode because that would be pointless
 
-	metadata = {'path': file};
+	metadata = {'path': file, 'noGPU': False};
 	metadata['hasAudio'] = probeHasAudioSearchExpression.search(info.stderr) != None;
 	return metadata;
 
@@ -230,20 +230,37 @@ while len(validFiles) > 0 or len(processes) > 0:
 				process['handle'].kill();
 				process['tempPath'].unlink();
 			else:
-				process['output'] += process['handle'].stdout.read(4096);
+				process['output'] += process['handle'].stdout.read(4096); # Move output out of pipe so it doesn't become full
 				continue;
 
 		elif code == 0:
-			# We're good! Time to remove this process and its file
-			if args.delete:
-				process['originalFile']['path'].unlink();
+			# FFmpeg exited with OK status, do output checks
+			originalSize = process['originalFile']['path'].stat().st_size;
+			newSize = process['tempPath'].stat().st_size;
 
-			if args.dry:
-				# Dry run, remove the newly encoded file
+			# If the new file is larger than the original, we don't want to use the new file
+			if originalSize <= newSize:
+				error(process['originalFile']['path'].name + ": Resulting converted file is larger... ", end='');
 				process['tempPath'].unlink();
 
-			# Move the temporary file name to its destination
-			process['tempPath'].rename(process['destinationPath']);
+				if process['originalFile']['useGPU']:
+					# We would like to try this again using software encoding instead
+					error("Re-queueing the file for software-only encoding.");
+					process['originalFile']['noGPU'] = True;
+					validFiles.append(process['originalFile']);
+				else
+					error("Discarding.");
+
+			# New file is smaller, good. Check what needs cleaned up.
+			else:
+				if args.delete: # User requested original files be deleted
+					process['originalFile']['path'].unlink();
+
+				if args.dry: # User requested newly encoded files be discarded
+					process['tempPath'].unlink();
+
+				# Move the temporary file to its destination
+				process['tempPath'].rename(process['destinationPath']);
 
 		else:
 			# ffmpeg raised an error... We'll remove the new file since it wasn't finished
@@ -280,9 +297,10 @@ while len(validFiles) > 0 or len(processes) > 0:
 			error(str(destinationPath) + ": File exists, skipping encoding. Resolve this with --overwrite or --delete (or try a different --suffix)");
 			continue;
 
+		# Decide if this will be a hardware-accelerated thread
 		metadata['useGPU'] = False;
 
-		if gpuProcesses > 0:
+		if gpuProcesses > 0 and not metadata['noGPU']:
 			gpuProcesses -= 1;
 			metadata['useGPU'] = True;
 
