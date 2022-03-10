@@ -1,8 +1,8 @@
 # h265ify
-A tool to automate the process of re-encoding a large collection of videos into newer generation video encoding, for massively reducing filesize at nearly no visible quality loss. All video tracks are re-encoded with libx265, with audio tracks (if applicable) being re-encoded to aac. This script uses the mkv container exclusively, so all outputted files will be .mkv. This script will automatically detect and skip encoding of any files that already have h265 video tracks, and will skip any files that lack video tracks altogether. As much as possible, all video metadata, subtitles, and attachments are preserved.
+A tool to automate the process of re-encoding a large collection of videos into newer generation video encoding, for massively reducing filesize at nearly no visible quality loss. All video tracks are re-encoded with libx265, with audio tracks (if applicable) being re-encoded to aac. This script uses the mkv container exclusively, so all outputted files will be .mkv. This script will automatically detect and skip encoding of any files that already have h265 video tracks, and will skip any files that lack video tracks altogether. As much as possible, all video metadata, subtitles, and attachments are preserved. Although somewhat rare; by default, this script will skip outputting newly encoded files if they result in a larger filesize. If the larger filesize is due to using a hardware encoder, the file is automatically re-queued for cpu-only encoding.
 
 ## Requirements
-h265ify requires the `python3` and `ffmpeg` packages. Presently, h265ify only works on unix systems; but it could support Windows with some tweaks. Make an issue if you're interested.
+h265ify requires the `python3` (>3.7) and `ffmpeg` (>4.0) packages. Presently, h265ify only works on unix systems; but it could support Windows with some tweaks. Make an issue if you're interested.
 
 ## Usage
 Run this script with `python3 h265ify.py [args] directory` or `./h265ify.py [args] directory` or similar. The given directory will be searched recursively for all potentially applicable media files.

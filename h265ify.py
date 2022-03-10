@@ -8,8 +8,8 @@ cpuEncoderOption = ['libx265', '-preset', 'veryslow']; #CPU encoder
 nvencEncoderOption = ['hevc_nvenc', '-preset', 'slow']; #NVIDIA gpu encoder
 amfEncoderOption = ['hevc_amf']; #AMD gpu encoder
 
-def error(message):
-	print(message, file=sys.stderr);
+def error(message, end='\n'):
+	print(message, file=sys.stderr, end=end);
 
 # Ensure we have ffmpeg
 if Which('ffmpeg') == None:
@@ -248,8 +248,10 @@ while len(validFiles) > 0 or len(processes) > 0:
 					error("Re-queueing the file for software-only encoding.");
 					process['originalFile']['noGPU'] = True;
 					validFiles.append(process['originalFile']);
-				else
+				else:
 					error("Discarding.");
+
+				finishedFilesCount -= 1;
 
 			# New file is smaller, good. Check what needs cleaned up.
 			else:
@@ -320,7 +322,7 @@ while len(validFiles) > 0 or len(processes) > 0:
 
 		print("");
 
-
+	validFilesCount = len(validFiles) + len(processes);
 	print("Converting: " + str(finishedFilesCount) + "/" + str(validFilesCount) + " " + str(int(finishedFilesCount / validFilesCount * 100)) + "%", end='\r');
 	time.sleep(0.1);
 
