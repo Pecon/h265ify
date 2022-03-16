@@ -322,7 +322,6 @@ while len(validFiles) > 0 or len(processes) > 0:
 
 		print("");
 
-	validFilesCount = len(validFiles) + len(processes);
 	print("Converting: " + str(finishedFilesCount) + "/" + str(validFilesCount) + " " + str(int(finishedFilesCount / validFilesCount * 100)) + "%", end='\r');
 	time.sleep(0.1);
 
