@@ -24,6 +24,7 @@ argParser.add_argument('--processes', '-p', type = int, help = "Number of ffmpeg
 argParser.add_argument('--gpu_processes', '-g', type = int, help = "Number of ffmpeg processes that will use the GPU. This will be automatically set to 1 if a compatible GPU is detected. Set to a negative number to completely disable GPU encoding.", default = 0);
 argParser.add_argument('--force_nvidia', help = "Force enable nvenc support. Use this option if your GPU is not detected but you know it supports nvenc.", action = 'store_true');
 argParser.add_argument('--force_amd', help = "Force enable amf support. This is experimental, you can try it if your GPU supports amf hardware encoding.", action = 'store_true');
+argParser.add_argument('--force_encoded', help = "Force re-encoding for files which are already h265. Useful for h265 files that were poorly encoded.", action = 'store_true');
 argParser.add_argument('--timeout', '-t', type = int, help = "Maximum minutes to wait for ffmpeg to finish a single file. Leaving this above 0 is recommended since ffmpeg rarely can get stuck. Use -1 for no time limit. (Default: 120)", default = 120);
 argParser.add_argument('--delete', '-x', help = "Delete source files as soon as they are encoded successfully.", action = 'store_true');
 argParser.add_argument('--overwrite', '-o', help = "Overwrite existing files when there is a name conflict.", action = 'store_true');
@@ -107,7 +108,7 @@ def checkH265(file):
 		error(str(file) + ": ffprobe returned non-zero exit code. Skipping.");
 		return None;
 
-	if probeEncoderSearchExpression.search(info.stderr) != None:
+	if probeEncoderSearchExpression.search(info.stderr) != None and not args.force_encoded:
 		error(str(file) + ": Media is already h265. Skipping.");
 		return None; # Video is already hvec, don't encode
 

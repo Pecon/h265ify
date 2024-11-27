@@ -28,11 +28,14 @@ h265ify supports the following options:
 --gpu_processes (-g) *integer*
 + An integer to specify how many ffmpeg processes will use hardware-based encoding instead of libx265 CPU encoding. This value is automatically set to 1 if a compatible hardware encoder is detected. Although hardware encoding is incredibly fast, it can produce inferior results compared to CPU encoding. Set this to -1 to completely disable hardware encoding.
 
---force-nvidia
+--force_nvidia
 + Add this option to force attempting to use nvenc hardware encoding. Use this option if you know your GPU supports nvenc encoding and this script hasn't automatically detected support for it.
 
---force-amd
-+ Same as above but for AMF hardware encoding. 
+--force_amd
++ Same as above but for AMF hardware encoding.
+
+--force_encoded
++ Force re-encoding of files that would normally be skipped due to being detected as already being h265.
 
 --overwrite (-o)
 + Add this option to specify that when any file finishes encoding, it should overwrite any existing file it would have a name conflict with. If this option is not specified, name conflicts will result in the conflicting files failing to convert. Default: False
